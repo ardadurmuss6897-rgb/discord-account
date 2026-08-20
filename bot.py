@@ -8,16 +8,26 @@ import discord
 from discord.ext import tasks
 
 # ==========================================
-# 🎯 1. BÖLÜM: BİLGİ VE SPOTIFY AYARLARI
+# 🎯 1. BÖLÜM: SPOTIFY PLAYLIST VE AYARLAR
 # ==========================================
 
-# 🎵 Profilde Görünecek Spotify Şarkı Bilgileri
-SPOTIFY_TITLE = "Cevapsız Sorular"
-SPOTIFY_ARTIST = "maNga"
-SPOTIFY_ALBUM = "maNga"
-# Spotify şarkı linkindeki track/ sonrası gelen ID kopyalanmalıdır
-SPOTIFY_TRACK_ID = "38aAwEQ0g0k65V00U1sS4v" 
-SONG_DURATION_SECONDS = 272  # 4 dakika 32 saniye = 272 saniye
+# 🎵 Kendi Şarkılarını Buraya Ekle (Sırayla değişecek)
+PLAYLIST = [
+    {
+        "title": "Cevapsız Sorular",
+        "artists": ["maNga"], # Çoğul ve köşeli parantez içinde (Hata çözümü)
+        "album": "maNga",
+        "track_id": "38aAwEQ0g0k65V00U1sS4v",
+        "duration": 272  # 4 dakika 32 saniye
+    },
+    {
+        "title": "Bir Kadın Çizeceksin",
+        "artists": ["maNga"],
+        "album": "maNga",
+        "track_id": "2M2E4hU2D1FwZzGnbC36Za", # Örnek ID (Spotify'dan alabilirsin)
+        "duration": 238  # 3 dakika 58 saniye
+    }
+]
 
 # 📢 Kanala Atılacak Duyuru Metni
 MESSAGE = """▬▬▬▬▬▬๑ 𝐒𝐎𝐍 𝐀𝐋𝐅𝐀𝐋𝐀𝐑 ๑▬▬▬▬▬▬●
@@ -58,14 +68,10 @@ CHANNEL_ID_RAW = os.getenv('CHANNEL_ID')
 INTERVAL_HOURS = float(os.getenv('INTERVAL_HOURS', '1.5'))
 
 if not TOKEN or not CHANNEL_ID_RAW:
-    logging.critical("KRİTİK HATA: 'DISCORD_TOKEN' veya 'CHANNEL_ID' değişkeni eksik!")
+    logging.critical("KRİTİK HATA: 'DISCORD_TOKEN' veya 'CHANNEL_ID' eksik!")
     sys.exit(1)
 
-try:
-    CHANNEL_ID = int(CHANNEL_ID_RAW)
-except ValueError:
-    logging.critical("KRİTİK HATA: 'CHANNEL_ID' sadece sayılardan oluşmalıdır!")
-    sys.exit(1)
+CHANNEL_ID = int(CHANNEL_ID_RAW)
 
 # ==========================================
 # 🚀 3. BÖLÜM: GELİŞMİŞ SELF-BOT SINIFI
@@ -78,78 +84,61 @@ class MasterSelfBot(discord.Client):
     async def on_ready(self):
         logging.info(f"Oturum açıldı: {self.user} (ID: {self.user.id})")
         
-        # Görevleri Başlatma
+        # Spotify Playlist'i ve Saatlik Görevi başlat
+        self.loop.create_task(self.spotify_dongusu())
         if not self.saatlik_gorev.is_running():
             self.saatlik_gorev.start()
-        if not self.spotify_dogrusu.is_running():
-            self.spotify_dogrusu.start()
 
     async def on_disconnect(self):
-        logging.warning("Discord bağlantısı koptu, otomatik yeniden bağlanılacak...")
+        logging.warning("Discord bağlantısı koptu, yeniden bağlanılacak...")
 
-    async def on_resumed(self):
-        logging.info("Discord bağlantısı yeniden kuruldu.")
-
-    # 🕒 Görev 1: Periyodik Mesaj Gönderme
+    # 🕒 Görev 1: Periyodik Mesaj
     @tasks.loop(hours=INTERVAL_HOURS)
     async def saatlik_gorev(self):
         try:
-            channel = self.get_channel(CHANNEL_ID)
-            if channel is None:
-                channel = await self.fetch_channel(CHANNEL_ID)
-
-            # Anti-Spam Güvenliği için 20 - 90s arası rastgele bekleme
+            channel = self.get_channel(CHANNEL_ID) or await self.fetch_channel(CHANNEL_ID)
             jitter = random.randint(20, 90)
-            logging.info(f"Mesaj zamanı geldi. {jitter} saniye bekleniyor...")
             await asyncio.sleep(jitter)
-
             await channel.send(MESSAGE)
-            logging.info(f"BAŞARILI: Mesaj gönderildi -> Kanal ID: {CHANNEL_ID}")
-
-        except discord.Forbidden:
-            logging.error("HATA: Bu kanalda mesaj atma yetkisi yok!")
-        except discord.NotFound:
-            logging.error("HATA: Kanal ID bulunamadı!")
+            logging.info(f"BAŞARILI: Mesaj atıldı -> Kanal ID: {CHANNEL_ID}")
         except Exception as e:
-            logging.error(f"Mesaj gönderme hatası: {e}")
+            logging.error(f"Mesaj atılamadı: {e}")
 
     @saatlik_gorev.before_loop
     async def before_saatlik_gorev(self):
         await self.wait_until_ready()
 
-    # 🎵 Görev 2: Spotify Canlı Zaman Çubuğu Döngüsü
-    @tasks.loop(seconds=SONG_DURATION_SECONDS)
-    async def spotify_dogrusu(self):
-        try:
-            start_time = datetime.datetime.now(datetime.timezone.utc)
-            end_time = start_time + datetime.timedelta(seconds=SONG_DURATION_SECONDS)
-
-            spotify_act = discord.Spotify(
-                title=SPOTIFY_TITLE,
-                artist=SPOTIFY_ARTIST,
-                album=SPOTIFY_ALBUM,
-                track_id=SPOTIFY_TRACK_ID,
-                start=start_time,
-                end=end_time
-            )
-            await self.change_presence(activity=spotify_act)
-            logging.info(f"Spotify Durumu Yenilendi: '{SPOTIFY_ARTIST} - {SPOTIFY_TITLE}'")
-        except Exception as e:
-            logging.error(f"Spotify durumu güncellenirken hata: {e}")
-
-    @spotify_dogrusu.before_loop
-    async def before_spotify_dogrusu(self):
+    # 🎵 Görev 2: Playlist Döngüsü
+    async def spotify_dongusu(self):
         await self.wait_until_ready()
+        index = 0
+        while not self.is_closed():
+            try:
+                sarki = PLAYLIST[index]
+                start_time = datetime.datetime.now(datetime.timezone.utc)
+                end_time = start_time + datetime.timedelta(seconds=sarki["duration"])
 
-# ==========================================
-# 🏁 4. BÖLÜM: ÇALIŞTIRMA
-# ==========================================
+                spotify_act = discord.Spotify(
+                    title=sarki["title"],
+                    artists=sarki["artists"],
+                    album=sarki["album"],
+                    track_id=sarki["track_id"],
+                    start=start_time,
+                    end=end_time
+                )
+                await self.change_presence(activity=spotify_act)
+                logging.info(f"🎵 Çalıyor: {sarki['artists'][0]} - {sarki['title']}")
+
+                # Şarkı süresi kadar arka planda bekle
+                await asyncio.sleep(sarki["duration"])
+
+                # Sıradaki şarkıya geç
+                index = (index + 1) % len(PLAYLIST)
+
+            except Exception as e:
+                logging.error(f"Spotify döngüsü hatası: {e}")
+                await asyncio.sleep(15)
 
 if __name__ == "__main__":
     client = MasterSelfBot()
-    try:
-        client.run(TOKEN)
-    except discord.LoginFailure:
-        logging.critical("KRİTİK HATA: Token geçersiz veya sıfırlanmış!")
-    except Exception as e:
-        logging.critical(f"Çalıştırma hatası: {e}")
+    client.run(TOKEN)
