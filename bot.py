@@ -17,7 +17,7 @@ logging.basicConfig(
 TOKEN = os.getenv('DISCORD_TOKEN')
 CHANNEL_ID_RAW = os.getenv('CHANNEL_ID')
 MESSAGE = os.getenv('MESSAGE', 'Bu otomatik bir bilgilendirme mesajıdır.')
-INTERVAL_HOURS = float(os.getenv('INTERVAL_HOURS', '1.0'))
+INTERVAL_HOURS = float(os.getenv('INTERVAL_HOURS', '1.5'))
 
 if not TOKEN:
     logging.critical("KRİTİK: 'DISCORD_TOKEN' değişkeni bulunamadı! Program kapatılıyor.")
