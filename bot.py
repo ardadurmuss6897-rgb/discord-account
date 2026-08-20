@@ -15,17 +15,17 @@ from discord.ext import tasks
 PLAYLIST = [
     {
         "title": "Cevapsız Sorular",
-        "artists": ["maNga"], # Çoğul ve köşeli parantez içinde (Hata çözümü)
+        "artists": ["maNga"],
         "album": "maNga",
         "track_id": "38aAwEQ0g0k65V00U1sS4v",
-        "duration": 272  # 4 dakika 32 saniye
+        "duration": 272  
     },
     {
         "title": "Bir Kadın Çizeceksin",
         "artists": ["maNga"],
         "album": "maNga",
-        "track_id": "2M2E4hU2D1FwZzGnbC36Za", # Örnek ID (Spotify'dan alabilirsin)
-        "duration": 238  # 3 dakika 58 saniye
+        "track_id": "2M2E4hU2D1FwZzGnbC36Za", 
+        "duration": 238  
     }
 ]
 
@@ -84,7 +84,6 @@ class MasterSelfBot(discord.Client):
     async def on_ready(self):
         logging.info(f"Oturum açıldı: {self.user} (ID: {self.user.id})")
         
-        # Spotify Playlist'i ve Saatlik Görevi başlat
         self.loop.create_task(self.spotify_dongusu())
         if not self.saatlik_gorev.is_running():
             self.saatlik_gorev.start()
@@ -92,7 +91,6 @@ class MasterSelfBot(discord.Client):
     async def on_disconnect(self):
         logging.warning("Discord bağlantısı koptu, yeniden bağlanılacak...")
 
-    # 🕒 Görev 1: Periyodik Mesaj
     @tasks.loop(hours=INTERVAL_HOURS)
     async def saatlik_gorev(self):
         try:
@@ -108,7 +106,7 @@ class MasterSelfBot(discord.Client):
     async def before_saatlik_gorev(self):
         await self.wait_until_ready()
 
-    # 🎵 Görev 2: Playlist Döngüsü
+    # 🎵 Görev 2: Spotify Playlist Döngüsü
     async def spotify_dongusu(self):
         await self.wait_until_ready()
         index = 0
@@ -118,14 +116,18 @@ class MasterSelfBot(discord.Client):
                 start_time = datetime.datetime.now(datetime.timezone.utc)
                 end_time = start_time + datetime.timedelta(seconds=sarki["duration"])
 
+                # ADIM 1: Zaman parametreleri olmadan sadece şarkı bilgileriyle objeyi oluşturuyoruz
                 spotify_act = discord.Spotify(
                     title=sarki["title"],
                     artists=sarki["artists"],
                     album=sarki["album"],
-                    track_id=sarki["track_id"],
-                    start=start_time,
-                    end=end_time
+                    track_id=sarki["track_id"]
                 )
+                
+                # ADIM 2: Kütüphanenin arka planda kullandığı gizli değişkenlere süreyi dışarıdan müdahaleyle ekliyoruz
+                spotify_act._start = start_time
+                spotify_act._end = end_time
+
                 await self.change_presence(activity=spotify_act)
                 logging.info(f"🎵 Çalıyor: {sarki['artists'][0]} - {sarki['title']}")
 
